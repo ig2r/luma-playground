@@ -44,6 +44,8 @@ const fs = `\
   out vec4 fragColor;
 
   void main() {
+    // N.B. the following assumes that the light position is already in camera space,
+    // same as vVertex.
     vec3 toLight = normalize(app.lightPosition - vVertex);
     float cosAngle = dot(normalize(vNormal), toLight);
     cosAngle = clamp(cosAngle, 0.0, 1.0);
@@ -67,7 +69,7 @@ const app: { uniformTypes: Record<keyof AppUniforms, ShaderUniformType> } = {
 }
 
 const eyePosition = [0, 0, 4]
-const lightPosition = [0, 2, 4]
+const lightPosition = [-2, 2, 4]
 
 class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   mvpMatrix = new Matrix4()
@@ -150,7 +152,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
 
     this.uniformStore.setUniforms({
       app: {
-        lightPosition: new Vector3(lightPosition),
+        lightPosition: new Vector3(this.viewMatrix.transformAsPoint(lightPosition)),
       }
     })
 
