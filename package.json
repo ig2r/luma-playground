@@ -1,0 +1,21 @@
+{
+  "name": "luma-playground",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5"
+  },
+  "dependencies": {
+    "@luma.gl/core": "^9.1.0",
+    "@luma.gl/engine": "^9.1.0",
+    "@luma.gl/webgl": "^9.1.0",
+    "@math.gl/core": "^4.1.0"
+  }
+}
