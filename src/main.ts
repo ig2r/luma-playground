@@ -145,6 +145,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
         app: this.uniformStore.getManagedUniformBuffer(device, 'app'),
       },
       parameters: {
+        cullMode: 'back',
         depthWriteEnabled: true,
         depthCompare: 'less-equal',
       }
