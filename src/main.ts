@@ -10,7 +10,6 @@ const vs = `\
   uniform appUniforms {
     mat4 modelViewProjectionMatrix;
     mat4 modelViewMatrix;
-    vec3 lightPosition;
   } app;
 
   in vec3 position;
@@ -32,11 +31,9 @@ const fs = `\
 
   precision highp float;
 
-  uniform appUniforms {
-    mat4 modelViewProjectionMatrix;
-    mat4 modelViewMatrix;
+  uniform lightingUniforms {
     vec3 lightPosition;
-  } app;
+  } lighting;
 
   in vec3 vVertex;
   in vec3 vNormal;
@@ -46,7 +43,7 @@ const fs = `\
   void main() {
     // N.B. the following assumes that the light position is already in camera space,
     // same as vVertex.
-    vec3 toLight = normalize(app.lightPosition - vVertex);
+    vec3 toLight = normalize(lighting.lightPosition - vVertex);
     float cosAngle = dot(normalize(vNormal), toLight);
     cosAngle = clamp(cosAngle, 0.0, 1.0);
 
@@ -57,6 +54,9 @@ const fs = `\
 type AppUniforms = {
   mvpMatrix: Matrix4
   mvMatrix: Matrix4
+}
+
+type LightingUniforms = {
   lightPosition: Vector3
 }
 
@@ -64,6 +64,11 @@ const app: { uniformTypes: Record<keyof AppUniforms, ShaderUniformType> } = {
   uniformTypes: {
     mvpMatrix: 'mat4x4<f32>',
     mvMatrix: 'mat4x4<f32>',
+  }
+}
+
+const lighting: { uniformTypes: Record<keyof LightingUniforms, ShaderUniformType> } = {
+  uniformTypes: {
     lightPosition: 'vec3<f32>',
   }
 }
@@ -82,7 +87,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   keyFramesX: KeyFrames<number>
   keyFramesY: KeyFrames<number>
 
-  uniformStore = new UniformStore<{ app: AppUniforms }>({ app })
+  uniformStore = new UniformStore<{ app: AppUniforms, lighting: LightingUniforms }>({ app, lighting })
 
   constructor({ device, animationLoop }: AnimationProps) {
     super()
@@ -143,6 +148,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
 
       bindings: {
         app: this.uniformStore.getManagedUniformBuffer(device, 'app'),
+        lighting: this.uniformStore.getManagedUniformBuffer(device, 'lighting'),
       },
       parameters: {
         cullMode: 'back',
@@ -152,9 +158,9 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
     })
 
     this.uniformStore.setUniforms({
-      app: {
+      lighting: {
         lightPosition: new Vector3(this.viewMatrix.transformAsPoint(lightPosition)),
-      }
+      },
     })
 
     const keyFrameData: [number, number][] = [
