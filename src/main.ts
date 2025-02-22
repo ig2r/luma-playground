@@ -8,21 +8,23 @@ const vs = `\
   #version 300 es
 
   uniform appUniforms {
-    mat4 modelViewProjectionMatrix;
     mat4 modelViewMatrix;
+    mat4 projectionMatrix;
   } app;
 
   in vec3 position;
-  in vec3 vertexNormal;
+  in vec3 normal;
 
   out vec3 vVertex;
   out vec3 vNormal;
 
   void main() {
-    vVertex = vec3(app.modelViewMatrix * vec4(position, 1.0));
-    vNormal = vec3(app.modelViewMatrix * vec4(vertexNormal, 0.0));
+    vec4 viewSpaceVertexPosition = app.modelViewMatrix * vec4(position, 1.0);
 
-    gl_Position = app.modelViewProjectionMatrix * vec4(position, 1.0);
+    vVertex = vec3(viewSpaceVertexPosition);
+    vNormal = vec3(app.modelViewMatrix * vec4(normal, 0.0));
+
+    gl_Position = app.projectionMatrix * viewSpaceVertexPosition;
   }
 `
 
@@ -52,8 +54,8 @@ const fs = `\
 `
 
 type AppUniforms = {
-  mvpMatrix: Matrix4
-  mvMatrix: Matrix4
+  modelViewMatrix: Matrix4
+  projectionMatrix: Matrix4
 }
 
 type LightingUniforms = {
@@ -62,8 +64,8 @@ type LightingUniforms = {
 
 const app: { uniformTypes: Record<keyof AppUniforms, ShaderUniformType> } = {
   uniformTypes: {
-    mvpMatrix: 'mat4x4<f32>',
-    mvMatrix: 'mat4x4<f32>',
+    modelViewMatrix: 'mat4x4<f32>',
+    projectionMatrix: 'mat4x4<f32>',
   }
 }
 
@@ -77,8 +79,8 @@ const eyePosition = [0, 0, 4]
 const lightPosition = [-2, 2, 4]
 
 class MyAnimationLoopTemplate extends AnimationLoopTemplate {
-  mvpMatrix = new Matrix4()
   viewMatrix = new Matrix4().lookAt({ eye: eyePosition })
+  projectionMatrix = new Matrix4()
 
   positionBuffer: Buffer
   vertexNormalBuffer: Buffer
@@ -137,11 +139,11 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
       // wires up the vertex and normals buffers to the appropriate shader attributes:
       bufferLayout: [
         { name: 'position', format: 'float32x3' },
-        { name: 'vertexNormal', format: 'float32x3' },
+        { name: 'normal', format: 'float32x3' },
       ],
       attributes: {
         position: this.positionBuffer,
-        vertexNormal: this.vertexNormalBuffer,
+        normal: this.vertexNormalBuffer,
       },
       vertexCount: 4 * 3,
       topology: 'triangle-list',
@@ -198,17 +200,13 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
     const endRotationY = this.keyFramesY.getEndData()
     const rotationY = startRotationY + this.keyFramesY.factor * (endRotationY - startRotationX)
 
-    const mvMatrix = new Matrix4(this.viewMatrix)
-      .rotateXYZ([rotationX, rotationY, 0])
-
-    this.mvpMatrix
-      .perspective({ fovy: Math.PI / 3, aspect })
-      .multiplyRight(mvMatrix)
+    const modelViewMatrix = new Matrix4(this.viewMatrix).rotateXYZ([rotationX, rotationY, 0])
+    this.projectionMatrix.perspective({ fovy: Math.PI / 3, aspect })
 
     this.uniformStore.setUniforms({
       app: {
-        mvpMatrix: this.mvpMatrix,
-        mvMatrix,
+        modelViewMatrix,
+        projectionMatrix: this.projectionMatrix,
       },
     })
 
