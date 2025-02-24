@@ -43,8 +43,7 @@ const fs = `\
   out vec4 fragColor;
 
   void main() {
-    // N.B. the following assumes that the light position is already in camera space,
-    // same as vVertex.
+    // Assumes that the light position is given in camera space, same as vVertex.
     vec3 toLight = normalize(lighting.lightPosition - vVertex);
     float cosAngle = dot(normalize(vNormal), toLight);
     cosAngle = clamp(cosAngle, 0.0, 1.0);
@@ -82,8 +81,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   viewMatrix = new Matrix4().lookAt({ eye: eyePosition })
   projectionMatrix = new Matrix4()
 
-  positionBuffer: Buffer
-  vertexNormalBuffer: Buffer
+  vertexDataBuffer: Buffer
   model: Model
 
   keyFramesX: KeyFrames<number>
@@ -99,59 +97,57 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
     const v3 = new Vector3([0.0, 1.0, 0.0])
     const v4 = new Vector3([0.0, 0.0, 1.0])
 
-    const surfaceNormal = (p1: Vector3, p2: Vector3, p3: Vector3) => {
+    const calculateSurfaceNormal = (p1: Vector3, p2: Vector3, p3: Vector3) => {
       const u = new Vector3(p2).subtract(p1)
       const v = new Vector3(p3).subtract(p2)
       return u.cross(v).normalize()
     }
 
-    // Calculate surface normals
-    const fn1 = surfaceNormal(v1, v3, v2)
-    const fn2 = surfaceNormal(v1, v4, v3)
-    const fn3 = surfaceNormal(v1, v2, v4)
-    const fn4 = surfaceNormal(v2, v3, v4)
+    // Calculate surface normals, then build interleaved buffer with faces and corresponding
+    // face normals (fn...), shared among all vertices of a face.
+    const fn1 = calculateSurfaceNormal(v1, v3, v2)
+    const fn2 = calculateSurfaceNormal(v1, v4, v3)
+    const fn3 = calculateSurfaceNormal(v1, v2, v4)
+    const fn4 = calculateSurfaceNormal(v2, v3, v4)
 
-    this.positionBuffer = device.createBuffer(
-      new Float32Array([
-        ...v1, ...v3, ...v2,
-        ...v1, ...v4, ...v3,
-        ...v1, ...v2, ...v4,
-        ...v2, ...v3, ...v4,
-      ])
-    )
+    const vertexData = new Float32Array([
+      ...v1, ...fn1, ...v3, ...fn1, ...v2, ...fn1,
+      ...v1, ...fn2, ...v4, ...fn2, ...v3, ...fn2,
+      ...v1, ...fn3, ...v2, ...fn3, ...v4, ...fn3,
+      ...v2, ...fn4, ...v3, ...fn4, ...v4, ...fn4,
+    ])
 
-    this.vertexNormalBuffer = device.createBuffer(
-      new Float32Array([
-        ...fn1, ...fn1, ...fn1,
-        ...fn2, ...fn2, ...fn2,
-        ...fn3, ...fn3, ...fn3,
-        ...fn4, ...fn4, ...fn4,
-      ])
-    )
+    this.vertexDataBuffer = device.createBuffer(vertexData)
 
     this.model = new Model(device, {
       vs,
       fs,
-      // geometry: new CubeGeometry({ indices: false }),
-      // geometry: new IcoSphereGeometry({ iterations: 1 }),
 
-      // Instead of using a pre-made geometry, the following block of properties
-      // wires up the vertex and normals buffers to the appropriate shader attributes:
+      // Describe how many vertices to expect and how to assemble them into faces:
+      topology: 'triangle-list',
+      vertexCount: 4 * 3,
+
+      // Describe how per-vertex data (attributes) are laid out in the input buffer:
       bufferLayout: [
-        { name: 'position', format: 'float32x3' },
-        { name: 'normal', format: 'float32x3' },
+        {
+          name: 'vertexData',
+          byteStride: 24,
+          attributes: [
+            { attribute: 'position', format: 'float32x3', byteOffset: 0 },
+            { attribute: 'normal', format: 'float32x3', byteOffset: 12 },
+          ]
+        }
       ],
       attributes: {
-        position: this.positionBuffer,
-        normal: this.vertexNormalBuffer,
+        vertexData: this.vertexDataBuffer,
       },
-      vertexCount: 4 * 3,
-      topology: 'triangle-list',
 
+      // Describe where uniforms come from:
       bindings: {
         app: this.uniformStore.getManagedUniformBuffer(device, 'app'),
         lighting: this.uniformStore.getManagedUniformBuffer(device, 'lighting'),
       },
+
       parameters: {
         cullMode: 'back',
         depthWriteEnabled: true,
@@ -185,8 +181,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   }
 
   override onFinalize(_: AnimationProps) {
-    this.positionBuffer.destroy()
-    this.vertexNormalBuffer.destroy()
+    this.vertexDataBuffer.destroy()
     this.model.destroy()
     this.uniformStore.destroy()
   }
