@@ -2,6 +2,9 @@ import { Buffer, luma, ShaderUniformType, UniformStore } from '@luma.gl/core'
 import { AnimationLoopTemplate, AnimationProps, KeyFrames, makeAnimationLoop, Model, Timeline } from '@luma.gl/engine'
 import { webgl2Adapter } from '@luma.gl/webgl'
 import { Matrix4, Vector3 } from '@math.gl/core'
+
+import { icoSphereFlat } from './icoSphereFlat'
+
 import './style.css'
 
 const vs = `\
@@ -75,7 +78,7 @@ const lighting: { uniformTypes: Record<keyof LightingUniforms, ShaderUniformType
 }
 
 const eyePosition = [0, 0, 4]
-const lightPosition = [-2, 2, 4]
+const lightPosition = [-2, 3, 4]
 
 class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   viewMatrix = new Matrix4().lookAt({ eye: eyePosition })
@@ -110,12 +113,18 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
     const fn3 = calculateSurfaceNormal(v1, v2, v4)
     const fn4 = calculateSurfaceNormal(v2, v3, v4)
 
-    const vertexData = new Float32Array([
-      ...v1, ...fn1, ...v3, ...fn1, ...v2, ...fn1,
-      ...v1, ...fn2, ...v4, ...fn2, ...v3, ...fn2,
-      ...v1, ...fn3, ...v2, ...fn3, ...v4, ...fn3,
-      ...v2, ...fn4, ...v3, ...fn4, ...v4, ...fn4,
-    ])
+    // const vertexData = new Float32Array([
+    //   ...v1, ...fn1, ...v3, ...fn1, ...v2, ...fn1,
+    //   ...v1, ...fn2, ...v4, ...fn2, ...v3, ...fn2,
+    //   ...v1, ...fn3, ...v2, ...fn3, ...v4, ...fn3,
+    //   ...v2, ...fn4, ...v3, ...fn4, ...v4, ...fn4,
+    // ])
+
+    const mesh = icoSphereFlat
+
+    const vertexData = new Float32Array(
+      mesh.faces.flatMap(([i, j]) => [...mesh.vertices[i - 1], ...mesh.normals[j - 1]])
+    )
 
     this.vertexDataBuffer = device.createBuffer(vertexData)
 
@@ -125,7 +134,8 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
 
       // Describe how many vertices to expect and how to assemble them into faces:
       topology: 'triangle-list',
-      vertexCount: 4 * 3,
+      // vertexCount: 4 * 3,
+      vertexCount: mesh.faces.length,
 
       // Describe how per-vertex data (attributes) are laid out in the input buffer:
       bufferLayout: [
@@ -163,7 +173,6 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
 
     const keyFrameData: [number, number][] = [
       [0, 0],
-      // [1000, 0.5 * Math.PI],
       [2000, 2 * Math.PI],
     ]
 
