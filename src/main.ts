@@ -1,5 +1,7 @@
-import { Buffer, luma, ShaderUniformType, UniformStore } from '@luma.gl/core'
-import { AnimationLoopTemplate, AnimationProps, KeyFrames, makeAnimationLoop, Model, Timeline } from '@luma.gl/engine'
+import { load } from '@loaders.gl/core'
+import { OBJLoader } from '@loaders.gl/obj'
+import { luma, ShaderUniformType, UniformStore } from '@luma.gl/core'
+import { AnimationLoopTemplate, AnimationProps, KeyFrames, makeAnimationLoop, Model, ModelNode, Timeline } from '@luma.gl/engine'
 import { webgl2Adapter } from '@luma.gl/webgl'
 import { Matrix4, Vector3 } from '@math.gl/core'
 
@@ -51,7 +53,7 @@ const fs = `\
     float cosAngle = dot(normalize(vNormal), toLight);
     cosAngle = clamp(cosAngle, 0.0, 1.0);
 
-    fragColor = vec4(vec3(cosAngle), 1.0);
+    fragColor = vec4(vec3(cosAngle) * vec3(0.9, 1.0, 1.0), 1.0);
   }
 `
 
@@ -77,48 +79,27 @@ const lighting: { uniformTypes: Record<keyof LightingUniforms, ShaderUniformType
   }
 }
 
-const eyePosition = [0, 0, 4]
+const eyePosition = [0, 1, 4]
 const lightPosition = [-2, 3, 4]
 
 class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   viewMatrix = new Matrix4().lookAt({ eye: eyePosition })
   projectionMatrix = new Matrix4()
 
-  vertexDataBuffer: Buffer
-  model: Model
+  modelNode: ModelNode
 
-  keyFramesX: KeyFrames<number>
-  keyFramesY: KeyFrames<number>
+  rotationKeyFrames: KeyFrames<number>
 
   uniformStore = new UniformStore<{ app: AppUniforms, lighting: LightingUniforms }>({ app, lighting })
 
   constructor({ device, animationLoop }: AnimationProps) {
     super()
 
-    const v1 = new Vector3([0.0, 0.0, 0.0])
-    const v2 = new Vector3([1.0, 0.0, 0.0])
-    const v3 = new Vector3([0.0, 1.0, 0.0])
-    const v4 = new Vector3([0.0, 0.0, 1.0])
-
-    const calculateSurfaceNormal = (p1: Vector3, p2: Vector3, p3: Vector3) => {
-      const u = new Vector3(p2).subtract(p1)
-      const v = new Vector3(p3).subtract(p2)
-      return u.cross(v).normalize()
-    }
-
-    // Calculate surface normals, then build interleaved buffer with faces and corresponding
-    // face normals (fn...), shared among all vertices of a face.
-    const fn1 = calculateSurfaceNormal(v1, v3, v2)
-    const fn2 = calculateSurfaceNormal(v1, v4, v3)
-    const fn3 = calculateSurfaceNormal(v1, v2, v4)
-    const fn4 = calculateSurfaceNormal(v2, v3, v4)
-
-    // const vertexData = new Float32Array([
-    //   ...v1, ...fn1, ...v3, ...fn1, ...v2, ...fn1,
-    //   ...v1, ...fn2, ...v4, ...fn2, ...v3, ...fn2,
-    //   ...v1, ...fn3, ...v2, ...fn3, ...v4, ...fn3,
-    //   ...v2, ...fn4, ...v3, ...fn4, ...v4, ...fn4,
-    // ])
+    this.uniformStore.setUniforms({
+      lighting: {
+        lightPosition: new Vector3(this.viewMatrix.transformAsPoint(lightPosition)),
+      },
+    })
 
     const mesh = icoSphereFlat
 
@@ -126,9 +107,9 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
       mesh.faces.flatMap(([i, j]) => [...mesh.vertices[i - 1], ...mesh.normals[j - 1]])
     )
 
-    this.vertexDataBuffer = device.createBuffer(vertexData)
+    const vertexDataBuffer = device.createBuffer(vertexData)
 
-    this.model = new Model(device, {
+    const model = new Model(device, {
       vs,
       fs,
 
@@ -149,7 +130,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
         }
       ],
       attributes: {
-        vertexData: this.vertexDataBuffer,
+        vertexData: vertexDataBuffer,
       },
 
       // Describe where uniforms come from:
@@ -165,46 +146,38 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
       }
     })
 
-    this.uniformStore.setUniforms({
-      lighting: {
-        lightPosition: new Vector3(this.viewMatrix.transformAsPoint(lightPosition)),
-      },
+    this.modelNode = new ModelNode({
+      model,
+      managedResources: [vertexDataBuffer],
     })
 
-    const keyFrameData: [number, number][] = [
+    const rotationKeyFrameData: [number, number][] = [
       [0, 0],
-      [2000, 2 * Math.PI],
+      [5000, 2 * Math.PI],
     ]
 
     const timeline = new Timeline()
 
-    this.keyFramesX = new KeyFrames(keyFrameData)
-    this.keyFramesY = new KeyFrames(keyFrameData)
-    const channelX = timeline.addChannel({ duration: 2000, repeat: Number.POSITIVE_INFINITY })
-    const channelY = timeline.addChannel({ rate: 0.7, duration: 2000 / 0.7, repeat: Number.POSITIVE_INFINITY })
-    timeline.attachAnimation(this.keyFramesX, channelX)
-    timeline.attachAnimation(this.keyFramesY, channelY)
+    this.rotationKeyFrames = new KeyFrames(rotationKeyFrameData)
+    const rotationChannel = timeline.addChannel({ duration: 5000, repeat: Number.POSITIVE_INFINITY })
+    timeline.attachAnimation(this.rotationKeyFrames, rotationChannel)
 
-    animationLoop.attachTimeline(timeline)
-    timeline.play()
+    animationLoop
+      .attachTimeline(timeline)
+      .play()
   }
 
   override onFinalize(_: AnimationProps) {
-    this.vertexDataBuffer.destroy()
-    this.model.destroy()
+    this.modelNode.destroy()
     this.uniformStore.destroy()
   }
 
   override onRender({ device, aspect }: AnimationProps) {
-    const startRotationX = this.keyFramesX.getStartData()
-    const endRotationX = this.keyFramesX.getEndData()
-    const rotationX = startRotationX + this.keyFramesX.factor * (endRotationX - startRotationX)
+    const startRotation = this.rotationKeyFrames.getStartData()
+    const endRotation = this.rotationKeyFrames.getEndData()
+    const rotation = startRotation + this.rotationKeyFrames.factor * (endRotation - startRotation)
 
-    const startRotationY = this.keyFramesY.getStartData()
-    const endRotationY = this.keyFramesY.getEndData()
-    const rotationY = startRotationY + this.keyFramesY.factor * (endRotationY - startRotationX)
-
-    const modelViewMatrix = new Matrix4(this.viewMatrix).rotateXYZ([rotationX, rotationY, 0])
+    const modelViewMatrix = new Matrix4(this.viewMatrix).rotateY(rotation)
     this.projectionMatrix.perspective({ fovy: Math.PI / 3, aspect })
 
     this.uniformStore.setUniforms({
@@ -215,7 +188,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
     })
 
     const renderPass = device.beginRenderPass({ clearColor: [1, 1, 1, 1] })
-    this.model.draw(renderPass)
+    this.modelNode.draw(renderPass)
     renderPass.end()
   }
 }
@@ -227,6 +200,9 @@ const device = luma.createDevice({
     canvas: document.querySelector<HTMLCanvasElement>('#canvas'),
   },
 })
+
+const data = await load('/icosphere-flat.obj', OBJLoader)
+console.info('loaded data: %o', data)
 
 const loop = makeAnimationLoop(MyAnimationLoopTemplate, { device })
 loop.start()

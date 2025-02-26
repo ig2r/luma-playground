@@ -13,6 +13,8 @@
     "vite": "^6.0.5"
   },
   "dependencies": {
+    "@loaders.gl/core": "^4.3.3",
+    "@loaders.gl/obj": "^4.3.3",
     "@luma.gl/core": "^9.1.0",
     "@luma.gl/engine": "^9.1.0",
     "@luma.gl/webgl": "^9.1.0",
