@@ -1,11 +1,9 @@
 import { load } from '@loaders.gl/core'
 import { OBJLoader } from '@loaders.gl/obj'
 import { luma, ShaderUniformType, UniformStore } from '@luma.gl/core'
-import { AnimationLoopTemplate, AnimationProps, GPUGeometry, KeyFrames, makeAnimationLoop, Model, ModelNode, Timeline } from '@luma.gl/engine'
+import { AnimationLoopTemplate, AnimationProps, Geometry, KeyFrames, makeAnimationLoop, Model, ModelNode, Timeline } from '@luma.gl/engine'
 import { webgl2Adapter } from '@luma.gl/webgl'
 import { Matrix4, Vector3 } from '@math.gl/core'
-
-import { icoSphereFlat } from './icoSphereFlat'
 
 import './style.css'
 
@@ -118,34 +116,34 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   }
 
   override async onInitialize({ device }: AnimationProps) {
-    // const data = await load('/icosphere-flat.obj', OBJLoader)
-    // console.info('loaded data: %o', data)
+    const modelMesh = await load('/icosphere-flat.obj', OBJLoader)
 
-    const mesh = icoSphereFlat
-
-    const vertexData = new Float32Array(
-      mesh.faces.flatMap(([i, j]) => [...mesh.vertices[i - 1], ...mesh.normals[j - 1]])
-    )
-
-    const vertexDataBuffer = device.createBuffer(vertexData)
-
-    const geometry = new GPUGeometry({
+    const geometry = new Geometry({
       topology: 'triangle-list',
-      vertexCount: mesh.faces.length,
-      bufferLayout: [
-        {
-          name: 'vertexData',
-          byteStride: 24,
-          attributes: [
-            { attribute: 'position', format: 'float32x3', byteOffset: 0 },
-            { attribute: 'normal', format: 'float32x3', byteOffset: 12 },
-          ]
-        }
-      ],
       attributes: {
-        vertexData: vertexDataBuffer,
-      },
+        position: modelMesh.attributes['POSITION'],
+        normal: modelMesh.attributes['NORMAL'],
+      }
     })
+
+    // const vertexDataBuffer = device.createBuffer(vertexData)
+    // const geometry = new GPUGeometry({
+    //   topology: 'triangle-list',
+    //   vertexCount: mesh.faces.length,
+    //   bufferLayout: [
+    //     {
+    //       name: 'vertexData',
+    //       byteStride: 24,
+    //       attributes: [
+    //         { attribute: 'position', format: 'float32x3', byteOffset: 0 },
+    //         { attribute: 'normal', format: 'float32x3', byteOffset: 12 },
+    //       ]
+    //     }
+    //   ],
+    //   attributes: {
+    //     vertexData: vertexDataBuffer,
+    //   },
+    // })
 
     const model = new Model(device, {
       vs,
@@ -167,7 +165,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
 
     this.modelNode = new ModelNode({
       model,
-      managedResources: [vertexDataBuffer],
+      // managedResources: [vertexDataBuffer],
     })
   }
 
