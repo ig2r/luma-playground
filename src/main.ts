@@ -1,7 +1,7 @@
 import { load } from '@loaders.gl/core'
 import { OBJLoader } from '@loaders.gl/obj'
 import { luma, ShaderUniformType, UniformStore } from '@luma.gl/core'
-import { AnimationLoopTemplate, AnimationProps, KeyFrames, makeAnimationLoop, Model, ModelNode, Timeline } from '@luma.gl/engine'
+import { AnimationLoopTemplate, AnimationProps, GPUGeometry, KeyFrames, makeAnimationLoop, Model, ModelNode, Timeline } from '@luma.gl/engine'
 import { webgl2Adapter } from '@luma.gl/webgl'
 import { Matrix4, Vector3 } from '@math.gl/core'
 
@@ -86,69 +86,19 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
   viewMatrix = new Matrix4().lookAt({ eye: eyePosition })
   projectionMatrix = new Matrix4()
 
-  modelNode: ModelNode
-
-  rotationKeyFrames: KeyFrames<number>
-
   uniformStore = new UniformStore<{ app: AppUniforms, lighting: LightingUniforms }>({ app, lighting })
 
-  constructor({ device, animationLoop }: AnimationProps) {
+  modelNode?: ModelNode
+  rotationKeyFrames: KeyFrames<number>
+
+  constructor({ animationLoop }: AnimationProps) {
     super()
 
+    // Set light position in view space. We do this once because we assume the camera doesn't move.
     this.uniformStore.setUniforms({
       lighting: {
         lightPosition: new Vector3(this.viewMatrix.transformAsPoint(lightPosition)),
       },
-    })
-
-    const mesh = icoSphereFlat
-
-    const vertexData = new Float32Array(
-      mesh.faces.flatMap(([i, j]) => [...mesh.vertices[i - 1], ...mesh.normals[j - 1]])
-    )
-
-    const vertexDataBuffer = device.createBuffer(vertexData)
-
-    const model = new Model(device, {
-      vs,
-      fs,
-
-      // Describe how many vertices to expect and how to assemble them into faces:
-      topology: 'triangle-list',
-      // vertexCount: 4 * 3,
-      vertexCount: mesh.faces.length,
-
-      // Describe how per-vertex data (attributes) are laid out in the input buffer:
-      bufferLayout: [
-        {
-          name: 'vertexData',
-          byteStride: 24,
-          attributes: [
-            { attribute: 'position', format: 'float32x3', byteOffset: 0 },
-            { attribute: 'normal', format: 'float32x3', byteOffset: 12 },
-          ]
-        }
-      ],
-      attributes: {
-        vertexData: vertexDataBuffer,
-      },
-
-      // Describe where uniforms come from:
-      bindings: {
-        app: this.uniformStore.getManagedUniformBuffer(device, 'app'),
-        lighting: this.uniformStore.getManagedUniformBuffer(device, 'lighting'),
-      },
-
-      parameters: {
-        cullMode: 'back',
-        depthWriteEnabled: true,
-        depthCompare: 'less-equal',
-      }
-    })
-
-    this.modelNode = new ModelNode({
-      model,
-      managedResources: [vertexDataBuffer],
     })
 
     const rotationKeyFrameData: [number, number][] = [
@@ -167,8 +117,62 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
       .play()
   }
 
+  override async onInitialize({ device }: AnimationProps) {
+    // const data = await load('/icosphere-flat.obj', OBJLoader)
+    // console.info('loaded data: %o', data)
+
+    const mesh = icoSphereFlat
+
+    const vertexData = new Float32Array(
+      mesh.faces.flatMap(([i, j]) => [...mesh.vertices[i - 1], ...mesh.normals[j - 1]])
+    )
+
+    const vertexDataBuffer = device.createBuffer(vertexData)
+
+    const geometry = new GPUGeometry({
+      topology: 'triangle-list',
+      vertexCount: mesh.faces.length,
+      bufferLayout: [
+        {
+          name: 'vertexData',
+          byteStride: 24,
+          attributes: [
+            { attribute: 'position', format: 'float32x3', byteOffset: 0 },
+            { attribute: 'normal', format: 'float32x3', byteOffset: 12 },
+          ]
+        }
+      ],
+      attributes: {
+        vertexData: vertexDataBuffer,
+      },
+    })
+
+    const model = new Model(device, {
+      vs,
+      fs,
+      geometry,
+
+      // Describe where uniforms come from:
+      bindings: {
+        app: this.uniformStore.getManagedUniformBuffer(device, 'app'),
+        lighting: this.uniformStore.getManagedUniformBuffer(device, 'lighting'),
+      },
+
+      parameters: {
+        cullMode: 'back',
+        depthWriteEnabled: true,
+        depthCompare: 'less-equal',
+      }
+    })
+
+    this.modelNode = new ModelNode({
+      model,
+      managedResources: [vertexDataBuffer],
+    })
+  }
+
   override onFinalize(_: AnimationProps) {
-    this.modelNode.destroy()
+    this.modelNode?.destroy()
     this.uniformStore.destroy()
   }
 
@@ -188,7 +192,7 @@ class MyAnimationLoopTemplate extends AnimationLoopTemplate {
     })
 
     const renderPass = device.beginRenderPass({ clearColor: [1, 1, 1, 1] })
-    this.modelNode.draw(renderPass)
+    this.modelNode?.draw(renderPass)
     renderPass.end()
   }
 }
@@ -200,9 +204,6 @@ const device = luma.createDevice({
     canvas: document.querySelector<HTMLCanvasElement>('#canvas'),
   },
 })
-
-const data = await load('/icosphere-flat.obj', OBJLoader)
-console.info('loaded data: %o', data)
 
 const loop = makeAnimationLoop(MyAnimationLoopTemplate, { device })
 loop.start()
